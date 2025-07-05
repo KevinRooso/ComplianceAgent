@@ -29,7 +29,18 @@ from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 
 load_dotenv()
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+# Add CORS middleware for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all for dev; restrict in prod
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def is_internal_link(base_url, link):
     """Check if the link is internal (same domain as base_url)."""
@@ -103,25 +114,67 @@ async def scrape_endpoint(request: ScrapeRequest):
 class ComplianceRequest(BaseModel):
     url: str
 
-EU_PROMPT = '''You are an expert in EU regulatory compliance. Given this input JSON (which describes a website’s AI features, dataflows, vendor relationships, and model types), analyse whether the site complies with the EU AI Act (Regulation (EU) 2024/1689). Provide a detailed JSON output with:
+EU_PROMPT = '''You are an expert in EU regulatory compliance. Given this input JSON (which describes a website content) and assess the likelihood that the company's AI product/service falls into each EU AI Act category.
 
-1. “scope_applicability”: Does the site fall under the Act? (yes/no), citing:
-   • provider/deployer status
-   • user base in EU or non‑EU
-2. “risk_classification”: Classify each AI component as:
-   • “unacceptable”, “high”, “limited”, “minimal”, or “GPAI”
-3. “requirements_check”: For each component, report compliance with applicable obligations:
-   • For unacceptable risk: check absence
-   • High-risk: risk management, data governance, human oversight, technical documentation, recordkeeping, conformity assessment
-   • Limited risk: transparency disclosures
-   • GPAI: transparency, copyright checks, bias testing, energy reporting
-4. “code_of_practice_adherence”: Whether site follows preliminary Code of Practice guidelines for GPAI if applicable
-5. “enforcement_timeline”: Identify which parts of the Act are currently enforceable (e.g., transparency for GPAI from 1 Aug 2025; bans from 2 Feb 2025)
-6. “penalty_risk_assessment”: Assess likely exposure to fines (e.g., up to 7 % turnover)
-7. “gaps_and_recommendations”: For each gap, propose steps to remedy compliance
-8. “summary”: Provide a compliance score (0–100) and overall verdict (Compliant / Needs remediation / Non‑compliant).
+## EU AI Act Categories:
 
-Return only valid JSON and use no free text outside the JSON structure.'''
+**1. Prohibited AI Practices (Banned)**
+- Social scoring by governments
+- Real-time biometric identification in public spaces
+- AI that exploits vulnerabilities (age, disability, economic situation)
+- Subliminal techniques to manipulate behavior
+- Emotion recognition in workplace/education (with exceptions)
+
+**2. High-Risk AI Systems**
+- Biometrics (face recognition, emotion detection)
+- Employment (hiring, firing, performance evaluation)
+- Education (student assessment, admission decisions)
+- Finance (credit scoring, insurance risk assessment)
+- Law enforcement (criminal risk assessment)
+- Healthcare (diagnostic systems)
+- Critical infrastructure (traffic, utilities)
+- Government services (benefits, immigration)
+
+**3. Limited Risk AI Systems**
+- Chatbots and conversational AI
+- AI that interacts directly with humans
+- Emotion recognition systems (outside prohibited contexts)
+- Biometric categorization systems
+- AI that generates/manipulates content (deepfakes)
+
+**4. Minimal Risk AI Systems**
+- AI-enabled video games
+- Spam filters
+- AI for inventory management
+- Most other AI applications not in above categories
+
+**5. General Purpose AI (GPAI) Models**
+- Foundation models (like GPT, Claude)
+- Large language models
+- Multimodal AI models
+- AI models that can be adapted for various tasks
+
+## Your Task:
+1. Read the website content about their AI product/service
+2. Score likelihood (0-10) for each category above
+3. Extract website URL and brief description
+4. Output as JSON only
+
+## Output Format (JSON only):
+```json
+{
+ "website_url": "[URL]",
+ "website_description": "[Brief 1-2 sentence description of what the company/product does]",
+ "category_scores": {
+ "prohibited_ai_practices": [0-10],
+ "high_risk_ai_systems": [0-10],
+ "limited_risk_ai_systems": [0-10],
+ "minimal_risk_ai_systems": [0-10],
+ "general_purpose_ai_models": [0-10]
+ }
+```
+
+Respond with JSON only, no additional text.'''
 
 @app.post("/analyze_compliance")
 async def analyze_compliance(request: ComplianceRequest):
