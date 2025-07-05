@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+playwright
+PyPDF2
+pdfplumber
+pydantic
+httpx
+beautifulsoup4
+tiktoken
+openai
