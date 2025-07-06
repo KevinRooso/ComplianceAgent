@@ -33,6 +33,83 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+# Couchbase settings
+import os
+from couchbase.cluster import Cluster
+from couchbase.options import ClusterOptions
+from couchbase.auth import PasswordAuthenticator
+from couchbase.exceptions import DocumentNotFoundException
+
+USER_ID = "Bruce"
+
+
+# --- Couchbase Memory Class ---
+class CouchbaseMemory:
+    def __init__(
+        self,
+        conn_str,
+        username,
+        password,
+        bucket_name,
+        scope_name="_default",
+        collection_name="_default",
+    ):
+        self.cluster = Cluster(
+            conn_str, ClusterOptions(PasswordAuthenticator(username, password))
+        )
+        self.bucket = self.cluster.bucket(bucket_name)
+        self.scope = self.bucket.scope(scope_name)
+        self.collection = self.scope.collection(collection_name)
+        print("[Memory System] Connected to Couchbase Capella")
+
+    def _doc_id(self, url: str):
+        return f"url::{url}"
+
+    def add(self, category: str, url: str, data: object):
+        doc_id = self._doc_id(url)
+        try:
+            doc = self.collection.get(doc_id).content_as[dict]
+        except DocumentNotFoundException:
+            doc = {}
+
+        doc.setdefault(category, [])
+        if data not in doc[category]:
+            doc[category].append(data)
+            self.collection.upsert(doc_id, doc)
+            print(
+                f"[Memory System] Saved data for url '{url}' in category '{category}': '{data}'"
+            )
+        return True
+
+    def search_by_category(self, url: str, category: str) -> list:
+        doc_id = self._doc_id(url)
+        try:
+            doc = self.collection.get(doc_id).content_as[dict]
+            results = doc.get(category, [])
+        except DocumentNotFoundException:
+            results = []
+        print(
+            f"[Memory System] Retrieved {len(results)} items from category '{category}' for url '{url}'."
+        )
+        return results
+
+
+# --- Replace with your Capella credentials ---
+COUCHBASE_CONN_STR = os.getenv("COUCHBASE_CONN_STR")
+COUCHBASE_USERNAME = os.getenv("COUCHBASE_USERNAME")
+COUCHBASE_PASSWORD = os.getenv("COUCHBASE_PASSWORD")
+COUCHBASE_BUCKET = os.getenv("COUCHBASE_BUCKET")
+
+persistent_data = CouchbaseMemory(
+    conn_str=COUCHBASE_CONN_STR,
+    username=COUCHBASE_USERNAME,
+    password=COUCHBASE_PASSWORD,
+    bucket_name=COUCHBASE_BUCKET,
+    scope_name="_default",  # match your setup
+    collection_name="_default",  # match your setup
+)
+
+
 # Add CORS middleware for frontend integration
 app.add_middleware(
     CORSMiddleware,
@@ -195,7 +272,7 @@ async def analyze_compliance(request: ComplianceRequest):
         llm_response = llm.invoke(prompt)
         # 4. Parse and return JSON only
         try:
-            compliance_json = json.loads(llm_response.content.strip())
+            compliance_json = json.loads(llm_response.content.strip())            
         except Exception:
             # Fallback: try to extract JSON from response
             import re
@@ -204,6 +281,8 @@ async def analyze_compliance(request: ComplianceRequest):
                 compliance_json = json.loads(match.group(0))
             else:
                 raise HTTPException(status_code=500, detail="LLM did not return valid JSON.")
+        persistent_data.add(category="report",url=request.url,data=compliance_json)
+        print("[Memory System] Saved data for url '{url}' in category 'report': '{data}'")
         return JSONResponse(content=compliance_json)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
