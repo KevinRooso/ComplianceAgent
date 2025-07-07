@@ -21,7 +21,7 @@ const Index = () => {
       <HeroSection onAnalyzeClick={scrollToReportGenerator} />
       
       {/* Report Generator Section */}
-      <div ref={reportGeneratorRef}>
+      <div ref={reportGeneratorRef} className="pb-16">
         <ReportGenerator />
       </div>
     </div>

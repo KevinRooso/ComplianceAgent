@@ -65,8 +65,8 @@ class CouchbaseMemory:
     def _doc_id(self, url: str):
         return f"url::{url}"
 
-    def add(self, category: str, url: str, data: object):
-        doc_id = self._doc_id(url)
+    def add(self, category: str, user_id: str, data: object):
+        doc_id = self._doc_id(user_id)
         try:
             doc = self.collection.get(doc_id).content_as[dict]
         except DocumentNotFoundException:
@@ -77,24 +77,37 @@ class CouchbaseMemory:
             doc[category].append(data)
             self.collection.upsert(doc_id, doc)
             print(
-                f"[Memory System] Saved data for url '{url}' in category '{category}': '{data}'"
+                f"[Memory System] Saved data for user '{user_id}' in category '{category}': '{data}'"
             )
         return True
 
-    def search_by_category(self, url: str, category: str) -> list:
-        doc_id = self._doc_id(url)
+    def search_by_category(self, user_id: str, category: str) -> list:
+        doc_id = self._doc_id(user_id)  
         try:
             doc = self.collection.get(doc_id).content_as[dict]
             results = doc.get(category, [])
         except DocumentNotFoundException:
             results = []
         print(
-            f"[Memory System] Retrieved {len(results)} items from category '{category}' for url '{url}'."
+            f"[Memory System] Retrieved {len(results)} items from category '{category}' for user '{user_id}'."
         )
         return results
 
 
 # --- Replace with your Capella credentials ---
+
+@app.get("/compliance_reports/{user_id}/{category}")
+async def get_compliance_reports(user_id: str, category: str):
+    """
+    Retrieve compliance reports for a given user and category (e.g., 'report').
+    Returns a list of compliance reports stored for that user/category.
+    """
+    try:
+        results = persistent_data.search_by_category(user_id, category)
+        return JSONResponse(content={"results": results})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 COUCHBASE_CONN_STR = os.getenv("COUCHBASE_CONN_STR")
 COUCHBASE_USERNAME = os.getenv("COUCHBASE_USERNAME")
 COUCHBASE_PASSWORD = os.getenv("COUCHBASE_PASSWORD")
@@ -281,8 +294,8 @@ async def analyze_compliance(request: ComplianceRequest):
                 compliance_json = json.loads(match.group(0))
             else:
                 raise HTTPException(status_code=500, detail="LLM did not return valid JSON.")
-        persistent_data.add(category="report",url=request.url,data=compliance_json)
-        print("[Memory System] Saved data for url '{url}' in category 'report': '{data}'")
+        persistent_data.add(category="report",user_id=USER_ID,data=compliance_json)
+        print(f"[Memory System] Saved data for user '{USER_ID}' in category 'report': '{compliance_json}'")
         return JSONResponse(content=compliance_json)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
